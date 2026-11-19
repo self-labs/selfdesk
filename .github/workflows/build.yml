@@ -1,5 +1,5 @@
 # SelfDesk: build automático do cliente RustDesk customizado
-# versão: 2026.11.19-2
+# versão: 2026.11.19-3
 #
 # Uma vez por dia, lê a versão padrão do rdgen público (rdgen.crayoneater.org). Se ainda não existe
 # a Release v<versão> neste repo, gera o cliente com o selfdesk.json (Windows 64 e Linux
@@ -139,6 +139,29 @@ jobs:
           for f in $need; do
             [ -s "out/$f" ] || { echo "::error::Faltou out/$f"; exit 1; }
           done
+
+      # O rdgen dá ao comando e ao serviço o nome do app (SelfDesk). Nos .deb, acrescenta o comando
+      # /usr/bin/selfdesk e o apelido selfdesk.service (o systemctl enable do postinst o cria),
+      # para o padrão em minúsculas do Linux. SelfDesk e SelfDesk.service continuam valendo.
+      - name: Comando e serviço em minúsculas nos .deb
+        if: matrix.platform == 'linux'
+        run: |
+          set -euo pipefail
+          for arch in x86_64 aarch64; do
+            deb="out/$EXENAME-$arch.deb"
+            rm -rf pkg && dpkg-deb -R "$deb" pkg
+            unit="$(find pkg/usr/share -path '*/files/systemd/*.service' | head -n1)"
+            app="$(basename "$unit" .service)"
+            [ -x "pkg/usr/share/$app/$app" ] || { echo "::error::Sem pkg/usr/share/$app/$app"; exit 1; }
+            ln -sfn "/usr/share/$app/$app" "pkg/usr/bin/$EXENAME"
+            grep -q "^Alias=$EXENAME.service" "$unit" || sed -i "/^\[Install\]/a Alias=$EXENAME.service" "$unit"
+            (cd pkg && find . -path ./DEBIAN -prune -o -type f -printf '%P\0' | sort -z | xargs -0 md5sum) > pkg/DEBIAN/md5sums
+            dpkg-deb --root-owner-group --build pkg "$deb"
+            dpkg-deb -c "$deb" | grep -q " ./usr/bin/$EXENAME -> /usr/share/$app/$app" \
+              || { echo "::error::$deb sem /usr/bin/$EXENAME"; exit 1; }
+            echo "$deb: /usr/bin/$EXENAME -> /usr/share/$app/$app, Alias=$EXENAME.service"
+          done
+          rm -rf pkg
 
       - uses: actions/upload-artifact@v4
         with:

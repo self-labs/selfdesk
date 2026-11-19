@@ -30,12 +30,13 @@ Cada Release traz um `SHA256SUMS` para conferir os arquivos.
 
 > [!WARNING]
 > Se a máquina já tem o **RustDesk oficial**, desinstale antes. Os dois usam serviços com nomes
-> diferentes (`rustdesk` e `SelfDesk`), então rodariam juntos, cada um com o seu ID.
+> diferentes (`rustdesk` e `selfdesk`), então rodariam juntos, cada um com o seu ID.
 
 ### Windows
 
 Rode o `selfdesk.exe` e clique em **Instalar**. O `.msi` serve para instalação silenciosa ou por GPO.
-Depois, em **Configurações → Segurança**, defina a **senha permanente** da máquina.
+Depois, em **Configurações → Segurança**, defina a **senha permanente** da máquina: sem ela o
+SelfDesk não aceita conexão (a senha temporária fica desligada).
 
 ### Debian/Ubuntu (inclusive servidor sem tela)
 
@@ -44,13 +45,16 @@ cd /tmp && curl -fsSLO https://github.com/self-labs/selfdesk/releases/latest/dow
 sudo apt install -y ./selfdesk-x86_64.deb
 ```
 
-O pacote instala o comando `SelfDesk` e o serviço `SelfDesk.service`, que ele mesmo habilita e inicia.
+O pacote instala o comando `selfdesk` e o serviço `selfdesk.service`, que ele mesmo habilita e inicia.
+Os nomes com maiúsculas (`SelfDesk`, `SelfDesk.service`) também funcionam: o rdgen dá ao programa o nome
+do app, e o workflow acrescenta ao `.deb` o comando e o apelido do serviço em minúsculas. Nos `.rpm`,
+AppImage e flatpak, só vale `SelfDesk`.
 A senha permanente vai por máquina, pelo terminal (o espaço antes do `sudo` tira a linha do histórico):
 
 ```bash
- sudo SelfDesk --password 'SENHA_FORTE_DA_MAQUINA'
-SelfDesk --get-id
-systemctl status SelfDesk
+ sudo selfdesk --password 'SENHA_FORTE_DA_MAQUINA'
+selfdesk --get-id
+systemctl status selfdesk
 ```
 
 ## O que já vem configurado
@@ -76,12 +80,12 @@ configuração, e o usuário não consegue trocar), o que é **padrão** (vem pr
 | Impressora remota (`enable-remote-printer`)                | sim                         |                                                                     |
 | Câmera (`enable-camera`)                                   | sim                         |                                                                     |
 | Terminal (`enable-terminal`)                               | sim                         | Abre um terminal na máquina acessada                                |
-| Senha aceita (`verification-method`)                       | `use-both-passwords`        | Vale a permanente **e** a temporária (a que muda a cada sessão)     |
-| Aprovação da sessão (`approve-mode`)                       | `password-click`            | Entra com a senha ou com o clique de quem está na frente            |
+| Senha aceita (`verification-method`)                       | `use-permanent-password`    | Só a permanente; a temporária fica desligada                        |
+| Aprovação da sessão (`approve-mode`)                       | `password`                  | Só por senha; ninguém aprova por clique                             |
 | Acesso por IP direto (`direct-server`)                     | não                         | Toda conexão passa pelo servidor de ID                              |
 | Descoberta na rede local (`enable-lan-discovery`)          | sim                         | Aparece para outras máquinas da LAN                                 |
 | Encerrar por inatividade (`allow-auto-disconnect`)         | não                         |                                                                     |
-| Ocultar a janela de conexão (`allow-hide-cm`)              | não                         | Quem está na frente sempre vê que há uma sessão                     |
+| Ocultar a janela de conexão (`allow-hide-cm`)              | sim                         | Quem está na frente **não** vê a janela da sessão                   |
 | Remover o papel de parede na sessão (`allow-remove-wallpaper`) | sim                     | Imagem mais leve no acesso                                          |
 | Link "Powered by" (`hide-powered-by-me`)                   | oculto                      |                                                                     |
 
@@ -101,6 +105,13 @@ configuração, e o usuário não consegue trocar), o que é **padrão** (vem pr
 Nome (SelfDesk), ícone, logo, tela de privacidade, cores da Self-Labs, e o aviso de nova versão do
 RustDesk oficial **desligado** (a atualização vem destas Releases). **Nenhuma senha vem embutida:** a
 permanente é definida em cada máquina.
+
+> [!IMPORTANT]
+> A janela oculta depende de três opções juntas: aprovação só por senha, só senha permanente e
+> `allow-hide-cm` (`hide_cm()` em `hbb_common/src/password_security.rs`). O rdgen só as liga com uma
+> senha embutida no build, então elas vão pelo `overrideManual` do [`selfdesk.json`](./selfdesk.json).
+> Consequência: **uma máquina sem senha permanente não aceita conexão**. Defina a senha logo na
+> instalação.
 
 ## Builds automáticos
 
