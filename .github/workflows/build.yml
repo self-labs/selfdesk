@@ -1,8 +1,8 @@
-# Self-Labs Remote: build automático do cliente RustDesk customizado
-# versão: 2026.11.19-1
+# SelfDesk: build automático do cliente RustDesk customizado
+# versão: 2026.11.19-2
 #
 # Uma vez por dia, lê a versão padrão do rdgen público (rdgen.crayoneater.org). Se ainda não existe
-# a Release v<versão> neste repo, gera o cliente com o selflabsremote.json (Windows 64 e Linux
+# a Release v<versão> neste repo, gera o cliente com o selfdesk.json (Windows 64 e Linux
 # x86_64/aarch64) e publica a Release. Os nomes dos arquivos não levam versão, então
 # /releases/latest/download/<arquivo> é uma URL estável (usada pelo script de instalação).
 #
@@ -11,7 +11,8 @@
 # só vira build depois que o rdgen a adiciona.
 #
 # Disparo manual (Actions > build > Run workflow): "version" força uma versão da lista do rdgen,
-# "force" refaz a Release existente (ex.: depois de mudar o JSON ou as imagens).
+# "force" apaga a Release existente (e a tag) e publica de novo só com os arquivos novos
+# (ex.: depois de mudar o JSON ou as imagens).
 
 name: build
 
@@ -40,7 +41,8 @@ env:
   RDGEN_URL: https://rdgen.crayoneater.org
   RDGEN_CLI_REPO: https://github.com/AlekseyLapunov/rdgen-cli.git
   RDGEN_CLI_SHA: 3e3a1543fab5635ea48a97360edff10af5a819c6 # fixado: o cliente roda com o token do repo
-  EXENAME: selflabsremote # igual ao "exename" do selflabsremote.json
+  CONFIG: selfdesk.json
+  EXENAME: selfdesk # igual ao "exename" do selfdesk.json
 
 jobs:
   check:
@@ -121,7 +123,7 @@ jobs:
           # --allow-partial: o rdgen-cli tenta baixar todos os formatos possíveis (AppImage,
           # flatpak, msi...), e nem todos são gerados. O passo seguinte exige os essenciais.
           python rdgen-cli/rdgen_cli.py -v -p --allow-partial \
-            -f selflabsremote.json -s "$RDGEN_URL" \
+            -f "$CONFIG" -s "$RDGEN_URL" \
             --set-version "$VER" --set-platform "${{ matrix.platform }}"
 
       - name: Conferir os arquivos essenciais
@@ -162,14 +164,26 @@ jobs:
           set -euo pipefail
           ls -la dist
           (cd dist && sha256sum -- * > SHA256SUMS)
-          NOTES="Self-Labs Remote baseado no RustDesk $VER, gerado pelo rdgen em $(date -u +%Y-%m-%d).
+          SRC="https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_SHA"
+          # As notas cumprem a AGPL-3.0 do RustDesk: dizem de onde vem o binário e onde está o fonte.
+          cat > notes.md <<EOF
+          SelfDesk $VER, cliente personalizado do [RustDesk](https://github.com/rustdesk/rustdesk) $VER, gerado pelo [rdgen](https://github.com/bryangerlach/rdgen) em $(date -u +%Y-%m-%d).
 
-          Windows 64: \`$EXENAME.exe\`. Linux: \`$EXENAME-x86_64.deb\` / \`$EXENAME-aarch64.deb\` (e .rpm).
-          Conferência: \`SHA256SUMS\`."
+          | Sistema | Arquivo |
+          | :-- | :-- |
+          | Windows 64 | \`$EXENAME.exe\` (ou \`$EXENAME.msi\`) |
+          | Debian/Ubuntu x86_64 | \`$EXENAME-x86_64.deb\` |
+          | Debian/Ubuntu ARM64 | \`$EXENAME-aarch64.deb\` |
+          | Outros Linux | \`.rpm\`, \`.AppImage\`, \`.flatpak\`, \`.pkg.tar.zst\` |
+
+          Conferência dos arquivos: \`SHA256SUMS\`.
+
+          **Código-fonte (AGPL-3.0):** [RustDesk $VER](https://github.com/rustdesk/rustdesk/tree/$VER), com os patches do [rdgen](https://github.com/bryangerlach/rdgen) (GPL-3.0) e a configuração deste build em [$GITHUB_REPOSITORY]($SRC). O SelfDesk não é um produto oficial do RustDesk.
+          EOF
+          # Com "force", a Release antiga sai inteira (com a tag) e volta só com os arquivos deste
+          # build, apontada para este commit: não sobra arquivo de um build anterior.
           if gh release view "v$VER" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "v$VER" dist/* --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "v$VER" --notes "$NOTES" --latest --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "v$VER" dist/* --title "Self-Labs Remote $VER" \
-              --notes "$NOTES" --latest --repo "$GITHUB_REPOSITORY"
+            gh release delete "v$VER" --cleanup-tag --yes --repo "$GITHUB_REPOSITORY"
           fi
+          gh release create "v$VER" dist/* --title "SelfDesk $VER" --target "$GITHUB_SHA" \
+            --notes-file notes.md --latest --repo "$GITHUB_REPOSITORY"

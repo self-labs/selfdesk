@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gera as imagens do cliente Self-Labs Remote a partir do logo.png da Self-Labs.
+"""Gera as imagens do cliente SelfDesk a partir do logo.png da Self-Labs.
 
 Uso: python3 build-brand.py <logo.png de origem> <pasta de saída>
 
