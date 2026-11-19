@@ -1,0 +1,175 @@
+# Self-Labs Remote: build automático do cliente RustDesk customizado
+# versão: 2026.11.19-1
+#
+# Uma vez por dia, lê a versão padrão do rdgen público (rdgen.crayoneater.org). Se ainda não existe
+# a Release v<versão> neste repo, gera o cliente com o selflabsremote.json (Windows 64 e Linux
+# x86_64/aarch64) e publica a Release. Os nomes dos arquivos não levam versão, então
+# /releases/latest/download/<arquivo> é uma URL estável (usada pelo script de instalação).
+#
+# Por que a versão vem do rdgen e não do RustDesk: o rdgen só compila as versões que ele lista
+# (VERSION_CHOICES), porque os patches dele dependem de cada versão. Uma versão nova do RustDesk
+# só vira build depois que o rdgen a adiciona.
+#
+# Disparo manual (Actions > build > Run workflow): "version" força uma versão da lista do rdgen,
+# "force" refaz a Release existente (ex.: depois de mudar o JSON ou as imagens).
+
+name: build
+
+on:
+  schedule:
+    - cron: "23 4 * * *" # 01:23 em São Paulo
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versão do RustDesk (vazio = a padrão do rdgen)"
+        required: false
+        default: ""
+      force:
+        description: "Refazer a Release mesmo que ela já exista"
+        type: boolean
+        default: false
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  RDGEN_URL: https://rdgen.crayoneater.org
+  RDGEN_CLI_REPO: https://github.com/AlekseyLapunov/rdgen-cli.git
+  RDGEN_CLI_SHA: 3e3a1543fab5635ea48a97360edff10af5a819c6 # fixado: o cliente roda com o token do repo
+  EXENAME: selflabsremote # igual ao "exename" do selflabsremote.json
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.release.outputs.build }}
+    steps:
+      - name: Versão a compilar
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_VERSION:-}" ]; then
+            VER="$INPUT_VERSION"
+          else
+            # a <option ... selected> do <select id="id_version"> da página do rdgen
+            VER="$(curl -fsSL "$RDGEN_URL/" | python3 -c '
+          import re, sys
+          html = sys.stdin.read()
+          sel = re.search(r"<select[^>]*id=\"id_version\"[^>]*>(.*?)</select>", html, re.S)
+          opt = sel and re.search(r"<option value=\"([^\"]+)\"\s+selected", sel.group(1))
+          print(opt.group(1) if opt else "")
+          ')"
+          fi
+          if ! printf '%s' "$VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Versão inválida ou não encontrada no rdgen: '$VER'"
+            exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "Versão: $VER"
+
+      - name: A Release já existe?
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.version.outputs.version }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          if gh release view "v$VER" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && [ "$FORCE" != "true" ]; then
+            echo "Release v$VER já existe; nada a fazer."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150 # o rdgen-cli desiste sozinho em 2 h
+    strategy:
+      fail-fast: true
+      max-parallel: 1 # um build por vez no rdgen público
+      matrix:
+        platform: [windows, linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Baixar o rdgen-cli
+        run: |
+          set -euo pipefail
+          git init -q rdgen-cli
+          git -C rdgen-cli fetch -q --depth 1 "$RDGEN_CLI_REPO" "$RDGEN_CLI_SHA"
+          git -C rdgen-cli checkout -q FETCH_HEAD
+          pip install -q -r rdgen-cli/requirements.txt
+
+      - name: Gerar no rdgen (${{ matrix.platform }})
+        env:
+          VER: ${{ needs.check.outputs.version }}
+        run: |
+          set -euo pipefail
+          # --allow-partial: o rdgen-cli tenta baixar todos os formatos possíveis (AppImage,
+          # flatpak, msi...), e nem todos são gerados. O passo seguinte exige os essenciais.
+          python rdgen-cli/rdgen_cli.py -v -p --allow-partial \
+            -f selflabsremote.json -s "$RDGEN_URL" \
+            --set-version "$VER" --set-platform "${{ matrix.platform }}"
+
+      - name: Conferir os arquivos essenciais
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          find downloads -type f -exec mv -t out {} +
+          ls -la out
+          case "${{ matrix.platform }}" in
+            windows) need="$EXENAME.exe" ;;
+            linux)   need="$EXENAME-x86_64.deb $EXENAME-aarch64.deb" ;;
+          esac
+          for f in $need; do
+            [ -s "out/$f" ] || { echo "::error::Faltou out/$f"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publicar a Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ needs.check.outputs.version }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          (cd dist && sha256sum -- * > SHA256SUMS)
+          NOTES="Self-Labs Remote baseado no RustDesk $VER, gerado pelo rdgen em $(date -u +%Y-%m-%d).
+
+          Windows 64: \`$EXENAME.exe\`. Linux: \`$EXENAME-x86_64.deb\` / \`$EXENAME-aarch64.deb\` (e .rpm).
+          Conferência: \`SHA256SUMS\`."
+          if gh release view "v$VER" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "v$VER" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "v$VER" --notes "$NOTES" --latest --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "v$VER" dist/* --title "Self-Labs Remote $VER" \
+              --notes "$NOTES" --latest --repo "$GITHUB_REPOSITORY"
+          fi
