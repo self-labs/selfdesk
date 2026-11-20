@@ -26,6 +26,7 @@ Portuguese with full accentuation. Commit messages are in English (Conventional 
 selfdesk.json              rdgen config (Load/Save Configuration in the rdgen UI); ~700 KB because
                            it embeds the brand images as base64. Do not read it whole.
 brand/                     icon.png, logo.png, privacy.png and build-brand.py that generates them
+scripts/repack-deb.sh      lowercase binary, /usr/bin/selfdesk and the alias in the rdgen .deb (see below)
 scripts/repack-arch.sh     rewrites the rdgen .pkg.tar.zst into the selfdesk package (see below)
 .github/workflows/build.yml  daily check, build (windows then linux), release
 README.md                  download links, install, locked/default settings, credits (pt-BR)
@@ -58,8 +59,12 @@ LICENSE                    AGPL-3.0 (from RustDesk)
 The rdgen names the binary and service after the app (`SelfDesk`). Both Linux formats are brought
 to the same layout:
 
-- `.deb` (workflow step "Comando e serviço em minúsculas nos .deb"): adds `/usr/bin/selfdesk` and
-  `Alias=selfdesk.service`, then fails the job when the brand logo is missing.
+- Both: the real binary is `/usr/share/SelfDesk/selfdesk`, with `SelfDesk` as a link to it, and
+  `ExecStop` kills by that path (see Gotchas).
+- `.deb` (`scripts/repack-deb.sh`, called by the workflow): adds `/usr/bin/selfdesk` and
+  `Alias=selfdesk.service`, keeps the rdgen maintainer scripts, and fails when the brand logo is
+  missing. It needs `dpkg-deb`, so test it on a Debian/Ubuntu host (the VPS Oracle has it):
+  `bash repack-deb.sh <copy>.deb selfdesk`, then `dpkg-deb -c`. Running it twice is harmless.
 - `.pkg.tar.zst` (`scripts/repack-arch.sh`): package renamed `rustdesk` -> `selfdesk` with
   `conflict = rustdesk` (otherwise the distro `rustdesk` replaces it on `pacman -Syu`),
   `SelfDesk.service` shipped in `/usr/lib/systemd/system` with `Alias=selfdesk.service` instead of
@@ -83,8 +88,9 @@ to the same layout:
   `libs/scrap/src/wayland/pipewire.rs`; the kill and tray patterns in `src/platform/linux.rs` do
   the same), and a process path is the resolved file, not a symlink. With the binary named
   `SelfDesk`, the Wayland server asked for the RemoteDesktop portal, which Hyprland lacks, and every
-  connection failed. `repack-arch.sh` renames it to `selfdesk` and leaves `SelfDesk` as a link; the
-  `.deb` still ships `SelfDesk` (fine on X11 for capture, but the same kill/tray patterns miss).
+  connection failed. `repack-arch.sh` and `repack-deb.sh` rename it to `selfdesk` and leave `SelfDesk` as a
+  link. Side effect: the logs become `selfdesk_rCURRENT.log`, and anything that greps for
+  `SelfDesk --server` must accept the lowercase name.
 - The `key` in `selfdesk.json` is the server's **public** key; it is meant to be in the client.
 - CortenDesk (`/downloads` on `rustdesk.selflabs.org`) serves its own uploaded copies of the
   `.exe` and `.deb`, stored on the server, not links to the Release. After a new Release they must be

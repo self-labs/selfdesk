@@ -34,6 +34,10 @@ mudanças no empacotamento entre duas versões do RustDesk ficam em `[Unreleased
   `SelfDesk` fica como link para ele. O log do servidor passa a ser `selfdesk_rCURRENT.log`.
   Testado no Omarchy em 2026-11-20 pelo CortenDesk, com o mesmo ID. O pacote da v1.5.3 foi
   trocado de novo na Release no mesmo dia, junto da linha dele no `SHA256SUMS`.
+- **O mesmo nos `.deb`**: o binário real passa a ser `/usr/share/SelfDesk/selfdesk` também no
+  Debian/Ubuntu, pelo novo [`scripts/repack-deb.sh`](./scripts/repack-deb.sh), que o workflow chama
+  no lugar do passo que só criava `/usr/bin/selfdesk`. Os dois `.deb` da v1.5.3 foram reempacotados
+  e trocados na Release e no `/downloads` do CortenDesk em 2026-11-20, com o `SHA256SUMS`.
 
 ## [1.5.3] - 2026-11-19
 
