@@ -78,6 +78,13 @@ to the same layout:
 - **Hidden connection window** needs password-only approval, permanent password only and
   `allow-hide-cm`. rdgen only sets them with a baked password, so they go through `overrideManual`.
   A machine without a permanent password does not accept connections.
+- **The real binary must be lowercase.** RustDesk finds its own processes with
+  `ps aux | grep "<app name lowercased> --server"` (`is_server_running` in
+  `libs/scrap/src/wayland/pipewire.rs`; the kill and tray patterns in `src/platform/linux.rs` do
+  the same), and a process path is the resolved file, not a symlink. With the binary named
+  `SelfDesk`, the Wayland server asked for the RemoteDesktop portal, which Hyprland lacks, and every
+  connection failed. `repack-arch.sh` renames it to `selfdesk` and leaves `SelfDesk` as a link; the
+  `.deb` still ships `SelfDesk` (fine on X11 for capture, but the same kill/tray patterns miss).
 - The `key` in `selfdesk.json` is the server's **public** key; it is meant to be in the client.
 - CortenDesk (`/downloads` on `rustdesk.selflabs.org`) serves its own uploaded copies of the
   `.exe` and `.deb`, stored on the server, not links to the Release. After a new Release they must be

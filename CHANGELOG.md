@@ -26,6 +26,14 @@ mudanças no empacotamento entre duas versões do RustDesk ficam em `[Unreleased
 - **Unit fora do controle do pacman**: o `.INSTALL` do rdgen copiava `rustdesk.service` para
   `/etc/systemd/system`, e ela ficava para trás na remoção. Agora a unit faz parte do pacote e o
   `.INSTALL` só roda o `systemctl`.
+- **Acesso remoto falhava no Wayland do Arch (Hyprland)** com "The desktop portal on the remote
+  device is missing a capability": o RustDesk reconhece o próprio `--server` procurando
+  `<nome do app em minúsculas> --server` no `ps` (`is_server_running`, `pipewire.rs`), e o binário
+  do pacote se chamava `SelfDesk`. Sem casar, o servidor pedia o portal RemoteDesktop, que o
+  `xdg-desktop-portal-hyprland` não tem. Agora o binário real é `/usr/share/SelfDesk/selfdesk`, e
+  `SelfDesk` fica como link para ele. O log do servidor passa a ser `selfdesk_rCURRENT.log`.
+  Testado no Omarchy em 2026-11-20 pelo CortenDesk, com o mesmo ID. O pacote da v1.5.3 foi
+  trocado de novo na Release no mesmo dia, junto da linha dele no `SHA256SUMS`.
 
 ## [1.5.3] - 2026-11-19
 

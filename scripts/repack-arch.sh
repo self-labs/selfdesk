@@ -35,11 +35,27 @@ app="$(basename "$(dirname "$(dirname "$unit_src")")")" # usr/share/<App>/files/
 [[ -x "usr/share/$app/$app" ]] || { echo "erro: sem usr/share/$app/$app" >&2; exit 1; }
 files="usr/share/$app/files"
 
+# ---- binario com o nome em minusculas; o nome do app fica como link no mesmo diretorio
+# O RustDesk acha os proprios processos procurando "<nome do app em minusculas> --server" (e
+# --tray) na saida do ps: is_server_running() em libs/scrap/src/wayland/pipewire.rs e os
+# padroes de kill e tray em src/platform/linux.rs. O caminho de um processo e o do arquivo real
+# (o link e resolvido), entao com o binario "SelfDesk" nada casa. No Wayland o --server conclui
+# que nao e servidor e pede o portal RemoteDesktop em vez do ScreenCast com uinput; no Hyprland,
+# sem RemoteDesktop, toda conexao falha com "The desktop portal on the remote device is missing
+# a capability" (Omarchy, 20/11/2026). No mesmo diretorio, o binario continua achando data/ e lib/.
+if [[ ! -L "usr/share/$app/$app" ]]; then
+  mv "usr/share/$app/$app" "usr/share/$app/$name"
+  ln -s "$name" "usr/share/$app/$app"
+fi
+ln -sfn "/usr/share/$app/$name" "usr/bin/$app"
+
 # ---- unit: dentro do pacote, com o nome do app e o apelido em minusculas
 mkdir -p usr/lib/systemd/system
 sed -e "s/^Description=.*/Description=$app/" \
-    -e 's|^ExecStop=pkill|ExecStop=/usr/bin/pkill|' \
+    -e "s|^ExecStop=pkill -f \"$app --\"|ExecStop=/usr/bin/pkill -f \"/usr/share/$app/$name --\"|" \
     "$unit_src" >"usr/lib/systemd/system/$app.service"
+grep -q "^ExecStop=/usr/bin/pkill -f \"/usr/share/$app/$name --\"" "usr/lib/systemd/system/$app.service" \
+  || { echo "erro: ExecStop inesperado em $unit_src" >&2; exit 1; }
 grep -q "^Alias=$name.service" "usr/lib/systemd/system/$app.service" \
   || sed -i "/^\[Install\]/a Alias=$name.service" "usr/lib/systemd/system/$app.service"
 rm -f "$unit_src"
@@ -58,7 +74,7 @@ grep -q "^Icon=$app$" "usr/share/applications/$app.desktop" \
 rmdir "$files" 2>/dev/null || true
 
 # ---- comando em minusculas
-ln -sfn "/usr/share/$app/$app" "usr/bin/$name"
+ln -sfn "/usr/share/$app/$name" "usr/bin/$name"
 
 # ---- scripts do pacman: so o systemctl, os arquivos agora sao do pacote
 cat >.INSTALL <<EOF
