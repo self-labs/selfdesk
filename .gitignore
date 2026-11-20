@@ -1,0 +1,47 @@
+# selfdesk - arquivos que nunca entram no repositório
+
+# --- Dependências e artefatos de build ---
+# Pacotes e instaladores vêm só do workflow e vão para a Release; um teste local do
+# repack-arch.sh ou um download para conferir não pode cair no histórico (dezenas de MB).
+out/
+downloads/
+rdgen-cli/
+*.pkg.tar.zst
+*.deb
+*.rpm
+*.AppImage
+*.flatpak
+*.exe
+*.msi
+__pycache__/
+*.pyc
+.venv/
+
+# --- Ambiente ---
+.env
+.env.*
+!.env.example
+
+# --- Logs ---
+*.log
+
+# --- Controle de trabalho ---
+# Rascunho de trabalho, não documentação: muda a cada sessão e cita o que
+# ainda está quebrado.
+CHECKLIST.md
+
+# --- Sistema operacional e editores ---
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.idea/
+.vscode/
+
+# --- Anexos soltos na raiz ---
+/*.pdf
+/*.docx
+/*.xlsx
+/*.xls
+/*.csv
+/*.zip
