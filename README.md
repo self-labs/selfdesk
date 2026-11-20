@@ -22,7 +22,8 @@ Os nomes dos arquivos não levam versão, então estes links sempre entregam a R
 | Windows 64             | [`selfdesk.exe`](https://github.com/self-labs/selfdesk/releases/latest/download/selfdesk.exe) ou [`selfdesk.msi`](https://github.com/self-labs/selfdesk/releases/latest/download/selfdesk.msi) |
 | Debian/Ubuntu x86_64   | [`selfdesk-x86_64.deb`](https://github.com/self-labs/selfdesk/releases/latest/download/selfdesk-x86_64.deb)   |
 | Debian/Ubuntu ARM64    | [`selfdesk-aarch64.deb`](https://github.com/self-labs/selfdesk/releases/latest/download/selfdesk-aarch64.deb) |
-| Outras distros Linux   | `.rpm`, `.AppImage`, `.flatpak` e `.pkg.tar.zst` na [Release](https://github.com/self-labs/selfdesk/releases/latest) |
+| Arch Linux x86_64      | [`selfdesk-x86_64.pkg.tar.zst`](https://github.com/self-labs/selfdesk/releases/latest/download/selfdesk-x86_64.pkg.tar.zst) (`sudo pacman -U`) |
+| Outras distros Linux   | `.rpm`, `.AppImage` e `.flatpak` na [Release](https://github.com/self-labs/selfdesk/releases/latest) |
 
 Cada Release traz um `SHA256SUMS` para conferir os arquivos.
 

@@ -1,5 +1,5 @@
 # SelfDesk: build automático do cliente RustDesk customizado
-# versão: 2026.11.19-4
+# versão: 2026.11.20-1
 #
 # Uma vez por dia, lê a versão padrão do rdgen público (rdgen.crayoneater.org). Se ainda não existe
 # a Release v<versão> neste repo, gera o cliente com o selfdesk.json (Windows 64 e Linux
@@ -134,7 +134,7 @@ jobs:
           ls -la out
           case "${{ matrix.platform }}" in
             windows) need="$EXENAME.exe" ;;
-            linux)   need="$EXENAME-x86_64.deb $EXENAME-aarch64.deb" ;;
+            linux)   need="$EXENAME-x86_64.deb $EXENAME-aarch64.deb $EXENAME-x86_64.pkg.tar.zst" ;;
           esac
           for f in $need; do
             [ -s "out/$f" ] || { echo "::error::Faltou out/$f"; exit 1; }
@@ -165,6 +165,17 @@ jobs:
             echo "$deb: /usr/bin/$EXENAME -> /usr/share/$app/$app, Alias=$EXENAME.service"
           done
           rm -rf pkg
+
+      # O .pkg.tar.zst do rdgen sai como pacote "rustdesk", com rustdesk.service e sem icone, e o
+      # rustdesk da distro passaria por cima dele. O script o deixa no padrao do .deb: pacote
+      # "selfdesk" (conflita com rustdesk), SelfDesk.service com o apelido selfdesk.service,
+      # /usr/bin/selfdesk e os icones com o nome do app.
+      - name: Pacote do Arch no padrão do SelfDesk
+        if: matrix.platform == 'linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq libarchive-tools zstd >/dev/null
+          bash scripts/repack-arch.sh "out/$EXENAME-x86_64.pkg.tar.zst" "$EXENAME"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -200,7 +211,8 @@ jobs:
           | Windows 64 | \`$EXENAME.exe\` (ou \`$EXENAME.msi\`) |
           | Debian/Ubuntu x86_64 | \`$EXENAME-x86_64.deb\` |
           | Debian/Ubuntu ARM64 | \`$EXENAME-aarch64.deb\` |
-          | Outros Linux | \`.rpm\`, \`.AppImage\`, \`.flatpak\`, \`.pkg.tar.zst\` |
+          | Arch x86_64 | \`$EXENAME-x86_64.pkg.tar.zst\` (\`sudo pacman -U\`) |
+          | Outros Linux | \`.rpm\`, \`.AppImage\`, \`.flatpak\` |
 
           Conferência dos arquivos: \`SHA256SUMS\`.
 
