@@ -702,10 +702,11 @@ function Remove-LeftoverRustDeskServices {
 function Invoke-Finalize {
   $sd = Get-SelfDeskInfo
   if (-not $sd -or $sd.State -ne 'Running') { die 'o SelfDesk nao esta rodando; nao removo o RustDesk' }
+  # So o principal rodando indica rollback (e so ele o -Rollback religa). Um extra rodando e o que
+  # a migracao antiga deixou para tras (camilla, 'RustDeskSvc' Running/Auto): para e desabilita.
+  $rd = Get-RustDeskInfo
+  if ($rd -and $rd.State -ne 'Stopped') { die ('o servico {0} do RustDesk esta {1} (rollback?): rode sem opcao para migrar de novo' -f $rd.Service, $rd.State) }
   $rdSvcs = @(Get-ClientServices $RdPattern)
-  foreach ($s in $rdSvcs) {
-    if ($s.State -ne 'Stopped') { die ('o servico {0} do RustDesk esta {1} (rollback?): rode sem opcao para migrar de novo' -f $s.Name, $s.State) }
-  }
   Disable-RustDeskServices ''
   $rdExes = @($rdSvcs | ForEach-Object { Get-ExeFromPathName $_.PathName } | Where-Object { $_ } | Sort-Object -Unique)
   $entries = @(Get-RustDeskUninstallEntries)
@@ -764,6 +765,7 @@ function Invoke-Migrate {
   $sd = Get-SelfDeskInfo
   if ($sd -and $sd.State -eq 'Running' -and (Get-AppId $sd.Exe) -eq $oldId) {
     log ('SelfDesk ja esta com o ID {0}: nada a migrar' -f $oldId)
+    Disable-RustDeskServices ''
     Show-State
     return
   }

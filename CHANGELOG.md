@@ -46,7 +46,8 @@ mudanças no empacotamento entre duas versões do RustDesk ficam em `[Unreleased
   na camilla (2026-11-21) havia `RustDesk` e `RustDeskSvc` com o mesmo exe, e a migração só parava o
   primeiro. Habilitado, o outro subiria o RustDesk no boot com a identidade do SelfDesk. Agora a migração
   e o `-Finalize` param e desabilitam todos, o principal é o que tem o nome da pasta do exe, e o `-Check`
-  lista os extras e as entradas de desinstalação.
+  lista os extras e as entradas de desinstalação. Um extra rodando não bloqueia o `-Finalize` (só o
+  principal rodando indica rollback), e rodar a migração de novo também desabilita os extras.
 - **`-Finalize` recusava o RustDesk instalado pelo `.exe`** ("sem ProductCode"): agora roda o
   `RustDesk.exe --uninstall` da entrada `RustDesk`, só quando o exe é o de um serviço do RustDesk, e
   apaga com `sc.exe delete` o serviço extra que ficar sem exe.
