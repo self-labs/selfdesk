@@ -473,6 +473,7 @@ function Invoke-Detached {
   $started = Get-Date
   $pos = [long]0
   $rc = 1
+  $notRunning = 0
   while ($true) {
     $pos = Show-LogFrom $pos
     if (Test-Path -LiteralPath $DoneFile) {
@@ -488,10 +489,16 @@ function Invoke-Detached {
     }
     $elapsed = (Get-Date) - $started
     if ($elapsed.TotalSeconds -gt 15) {
+      # Durante o msiexec o Get-ScheduledTask chegou a responder "nao esta rodando" com a tarefa no
+      # meio (jordao, 21/11/2026: LastTaskResult 267009, SCHED_S_TASK_RUNNING). So conta como fim
+      # quando o resultado tambem nao e "rodando", por 5 consultas seguidas.
       $t = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-      if (-not $t -or ($t.State -ne 'Running' -and $t.State -ne 'Queued')) {
+      $last = (Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction SilentlyContinue).LastTaskResult
+      $running = ($t -and ($t.State -eq 'Running' -or $t.State -eq 'Queued')) -or ($last -eq 267009)
+      if ($running) { $notRunning = 0 } else { $notRunning++ }
+      if ($notRunning -ge 5 -and -not (Test-Path -LiteralPath $DoneFile)) {
         $pos = Show-LogFrom $pos
-        $rc = [int](Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction SilentlyContinue).LastTaskResult
+        $rc = [int]$last
         Write-Host ('a tarefa terminou sem o marcador de fim (codigo {0})' -f $rc)
         if ($rc -eq 0) { $rc = 1 }
         break
