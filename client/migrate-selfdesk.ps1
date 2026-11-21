@@ -93,23 +93,24 @@ function Initialize-WorkDir {
   $script:SystemSid = New-Object Security.Principal.SecurityIdentifier 'S-1-5-18'
   $admins = $script:AdminsSid
   $system = $script:SystemSid
-  if (Test-Path -LiteralPath $WorkDir) {
-    $item = Get-Item -LiteralPath $WorkDir -Force
-    if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-      die ('{0} existe e nao e uma pasta comum; apague-o e rode de novo' -f $WorkDir)
-    }
-    $owner = (Get-Acl -LiteralPath $WorkDir).GetOwner([Security.Principal.SecurityIdentifier])
-    if ($owner -ne $admins -and $owner -ne $system) {
-      die ('{0} pertence a {1}, nao a Administradores/SYSTEM; apague a pasta e rode de novo' -f $WorkDir, $owner.Value)
-    }
-    Set-Acl -LiteralPath $WorkDir -AclObject (New-WorkDirAcl)
-    foreach ($c in @(Get-ChildItem -LiteralPath $WorkDir -Force -Recurse -ErrorAction Stop)) {
-      if (($c.Attributes -band [IO.FileAttributes]::ReparsePoint) -or -not (Test-TrustedOwner $c.FullName)) {
-        die ('{0} tem um item que nao e de Administradores/SYSTEM ou e link ({1}); apague a pasta e rode de novo' -f $WorkDir, $c.FullName)
-      }
-    }
-  } else {
+  # Criar e conferir sempre: se alguem criar a pasta entre o Test-Path e o CreateDirectory, ele so
+  # devolve a pasta que ja existe, sem aplicar a ACL; a conferencia abaixo vale para os dois casos.
+  if (-not (Test-Path -LiteralPath $WorkDir)) {
     [void][IO.Directory]::CreateDirectory($WorkDir, (New-WorkDirAcl))
+  }
+  $item = Get-Item -LiteralPath $WorkDir -Force
+  if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    die ('{0} existe e nao e uma pasta comum; apague-o e rode de novo' -f $WorkDir)
+  }
+  $owner = (Get-Acl -LiteralPath $WorkDir).GetOwner([Security.Principal.SecurityIdentifier])
+  if ($owner -ne $admins -and $owner -ne $system) {
+    die ('{0} pertence a {1}, nao a Administradores/SYSTEM; apague a pasta e rode de novo' -f $WorkDir, $owner.Value)
+  }
+  Set-Acl -LiteralPath $WorkDir -AclObject (New-WorkDirAcl)
+  foreach ($c in @(Get-ChildItem -LiteralPath $WorkDir -Force -Recurse -ErrorAction Stop)) {
+    if (($c.Attributes -band [IO.FileAttributes]::ReparsePoint) -or -not (Test-TrustedOwner $c.FullName)) {
+      die ('{0} tem um item que nao e de Administradores/SYSTEM ou e link ({1}); apague a pasta e rode de novo' -f $WorkDir, $c.FullName)
+    }
   }
 }
 

@@ -17,6 +17,7 @@
 #   sudo bash migrate-selfdesk.sh --crd-restart # so poe o Restart=on-failure no drop-in do Google
 #   sudo bash migrate-selfdesk.sh --update   # ja no SelfDesk: reinstala o .deb da Release mais recente
 #                                            # (versao nova do RustDesk ou pacote corrigido), mesmo ID
+#   sudo bash migrate-selfdesk.sh --restart  # reinicia o SelfDesk na tela certa (ver restart_on_display)
 #
 # O que faz, na ordem:
 #   1. le o ID do RustDesk como o usuario da sessao grafica (quem roda o --server)
@@ -60,7 +61,7 @@ die()  { printf '\033[1;31m[selfdesk] ERRO:\033[0m %s\n' "$*" >&2; exit 1; }
 # SelfDesk, um bash preso ao terminal morre no SIGHUP sem passar pelo rollback. Aqui ele
 # se relanca numa sessao propria e o terminal so acompanha o log.
 LOG=/var/log/migrate-selfdesk.log
-if [[ ( -z "${1:-}" || "${1:-}" == --update ) && -z "${MIGRATE_SELFDESK_DETACHED:-}" ]]; then
+if [[ ( -z "${1:-}" || "${1:-}" == --update || "${1:-}" == --restart ) && -z "${MIGRATE_SELFDESK_DETACHED:-}" ]]; then
   : >"$LOG"
   MIGRATE_SELFDESK_DETACHED=1 setsid -w bash "$0" "$@" >>"$LOG" 2>&1 </dev/null &
   pid=$!
@@ -102,6 +103,36 @@ last_display() { # ultima tela que o SelfDesk escolheu, como ":0"
     [[ -n "$pid" ]] && d="$(tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | sed -n 's/^DISPLAY=//p' | head -1 || true)"
   fi
   echo "$d"
+}
+
+server_display() { # DISPLAY do --server que esta rodando agora, como ":0"
+  local pid
+  pid="$(pgrep -u "$U" -f 'SelfDesk/[Ss]elf[Dd]esk --server' | head -1 || true)"
+  [[ -n "$pid" ]] && tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | sed -n 's/^DISPLAY=//p' | head -1
+  return 0
+}
+
+# Com o Chrome Remote Desktop no ar, o --server que reinicia ve tambem a tela :20 do Google e fica
+# com ela (domjose, emanuellistofel e pelle depois do --update de 20/11/2026: DISPLAY=:20). No boot
+# os drop-ins poem o SelfDesk antes do Google, entao so existe o :0. Aqui repete essa ordem: para o
+# Chrome Remote Desktop, reinicia o SelfDesk, espera a tela certa e sobe o Google de novo.
+restart_on_display() {
+  local crd=() u d=""
+  mapfile -t crd < <(systemctl list-units --state=active --no-legend --plain 'chrome-remote-desktop@*.service' | awk '{print $1}')
+  for u in "${crd[@]}"; do log "parando $u (volta em seguida)"; systemctl stop "$u" || true; done
+  systemctl restart "$SD_UNIT"
+  for _ in $(seq 1 30); do
+    sleep 2
+    d="$(server_display)"
+    [[ "$d" == "$DISP" ]] && break
+  done
+  for u in "${crd[@]}"; do systemctl start "$u" || warn "$u nao voltou: sudo systemctl start $u"; done
+  if [[ "$d" == "$DISP" ]]; then
+    log "SelfDesk na tela $d"
+  else
+    warn "o SelfDesk ficou na tela '${d:-nenhuma}', o certo e $DISP: reinicie a maquina (no boot a ordem acerta)"
+    return 1
+  fi
 }
 
 get_id_as() { # $1 comando (rustdesk|selfdesk)
@@ -212,8 +243,7 @@ update_selfdesk() {
   log "instalando por cima (o servico para e volta sozinho)"
   DEBIAN_FRONTEND=noninteractive dpkg -i "$DEB" >/dev/null
   systemctl daemon-reload
-  systemctl restart "$SD_UNIT"
-  sleep 8
+  restart_on_display || true
   new_id="$(get_id_as selfdesk)"
   [[ "$new_id" == "$old_id" ]] \
     || die "o SelfDesk voltou com o ID '$new_id', esperado '$old_id': confira /root/.config/selfdesk/SelfDesk.toml"
@@ -230,6 +260,7 @@ case "${1:-}" in
   --check) show_state; exit 0 ;;
   --crd-restart) ensure_crd_restart; systemctl daemon-reload; show_state; exit 0 ;;
   --update) update_selfdesk; exit 0 ;;
+  --restart) pkg_installed selfdesk || die "o SelfDesk nao esta instalado"; restart_on_display; show_state; exit 0 ;;
   --rollback) pkg_installed rustdesk || die "o RustDesk nao esta mais instalado"; rollback; exit 0 ;;
   --finalize)
     pkg_installed rustdesk || { log "RustDesk ja removido"; exit 0; }

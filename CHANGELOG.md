@@ -36,6 +36,10 @@ mudanças no empacotamento entre duas versões do RustDesk ficam em `[Unreleased
 
 ### 🐛 Fixed
 
+- **O `--update` deixava o SelfDesk na tela do Chrome Remote Desktop** ([`client/migrate-selfdesk.sh`](./client/migrate-selfdesk.sh)):
+  reiniciado com o Google no ar, o `--server` via também o `:20` dele e ficava com essa tela (três
+  clientes em 2026-11-20). O `--update` e a opção nova `--restart` param o Chrome Remote Desktop,
+  reiniciam o SelfDesk, esperam a tela certa (`:0`) e sobem o Google de novo, como na ordem do boot.
 - **Ícone ausente no Arch**: os `.desktop` pediam `Icon=SelfDesk`, mas os ícones do pacote se
   chamavam `rustdesk.png` e `rustdesk.svg`. Agora são `SelfDesk.png` e `SelfDesk.svg`.
 - **Unit fora do controle do pacman**: o `.INSTALL` do rdgen copiava `rustdesk.service` para

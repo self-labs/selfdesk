@@ -79,6 +79,7 @@ sudo curl -fsSLo /usr/local/sbin/migrate-selfdesk https://raw.githubusercontent.
 | (nenhuma)      | migra do RustDesk; seguro rodar de novo                                      |
 | `--update`     | reinstala o `.deb` da Release mais recente por cima, mesmo ID                |
 | `--check`      | só mostra o estado                                                           |
+| `--restart`    | reinicia o SelfDesk na tela certa (para o Chrome Remote Desktop no meio)     |
 | `--rollback`   | volta para o RustDesk (enquanto ele estiver instalado)                       |
 | `--finalize`   | remove o RustDesk, depois de conferir os reboots                             |
 
