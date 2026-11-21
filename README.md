@@ -107,10 +107,11 @@ agendada como SYSTEM, então a queda da sessão não a interrompe). No lugar de 
 `-Rollback`, `-Finalize` ou nada (migrar):
 
 ```powershell
-[Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:ProgramData\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:ProgramData\migrate-selfdesk.ps1 -Update
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:TEMP\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:TEMP\migrate-selfdesk.ps1 -Update
 ```
 
-Log em `C:\ProgramData\migrate-selfdesk.log`. O serviço do RustDesk é achado pelo caminho do executável,
+Log em `C:\ProgramData\SelfDesk-migrate\migrate-selfdesk.log`, numa pasta que só SYSTEM e
+Administradores acessam: a tarefa SYSTEM roda uma cópia do script guardada nela, nunca o arquivo baixado. O serviço do RustDesk é achado pelo caminho do executável,
 então um `hbbs`/`hbbr` instalado pelo NSSM na mesma máquina nunca é tocado.
 
 ## O que já vem configurado

@@ -5,16 +5,16 @@
 # SelfDesk no lugar. Gemeo Windows do migrate-selfdesk.sh (Linux).
 #
 # Uso (PowerShell como Administrador, pelo SSH ou dentro de uma sessao RustDesk):
-#   migra, desacoplado do console (log em C:\ProgramData\migrate-selfdesk.log):
-#     [Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:ProgramData\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:ProgramData\migrate-selfdesk.ps1
+#   migra, desacoplado do console (log em C:\ProgramData\SelfDesk-migrate\migrate-selfdesk.log):
+#     [Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:TEMP\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:TEMP\migrate-selfdesk.ps1
 #   so mostra o estado, nao muda nada:
-#     [Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:ProgramData\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:ProgramData\migrate-selfdesk.ps1 -Check
+#     [Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:TEMP\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:TEMP\migrate-selfdesk.ps1 -Check
 #   ja no SelfDesk: reinstala o MSI da Release mais recente (versao nova ou pacote refeito), mesmo ID:
-#     [Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:ProgramData\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:ProgramData\migrate-selfdesk.ps1 -Update
+#     [Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:TEMP\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:TEMP\migrate-selfdesk.ps1 -Update
 #   volta para o RustDesk (enquanto ele estiver instalado):
-#     [Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:ProgramData\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:ProgramData\migrate-selfdesk.ps1 -Rollback
+#     [Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:TEMP\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:TEMP\migrate-selfdesk.ps1 -Rollback
 #   depois de confirmar que o SelfDesk funciona: remove o RustDesk (MSI) em silencio:
-#     [Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:ProgramData\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:ProgramData\migrate-selfdesk.ps1 -Finalize
+#     [Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:TEMP\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:TEMP\migrate-selfdesk.ps1 -Finalize
 #   -Detached e interno: e o que a tarefa agendada passa para a copia que roda como SYSTEM.
 #
 # O que faz, na ordem:
@@ -23,8 +23,8 @@
 #   3. para E DESABILITA o servico do RustDesk (senao ele volta no boot com a mesma
 #      identidade copiada e os dois disputam o ID)
 #   4. instala o MSI do SelfDesk e acha o servico dele pelo PathName "selfdesk.exe --service"
-#   5. com o SelfDesk parado, copia o RustDesk.toml do servico e de cada usuario para o
-#      <App>.toml do SelfDesk (ID, chave e senha permanente moram nele)
+#   5. com o SelfDesk parado, copia o RustDesk.toml do servico para o <App>.toml do SelfDesk
+#      (ID, chave e senha permanente moram nele)
 #   6. sobe o SelfDesk e confere que o ID e o mesmo; se nao for, desfaz tudo sozinho
 #
 # Seguro rodar duas vezes: se o SelfDesk ja estiver com o ID do RustDesk, so confere.
@@ -45,9 +45,13 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # a barra de progresso deixa o iwr do PS 5.1 muito lento
 
 $ReleaseUrl = 'https://github.com/self-labs/selfdesk/releases/latest/download'
-$LogFile    = Join-Path $env:ProgramData 'migrate-selfdesk.log'
-$DoneFile   = Join-Path $env:ProgramData 'migrate-selfdesk.done'
-$MsiLog     = Join-Path $env:ProgramData 'migrate-selfdesk-msi.log'
+# Pasta de trabalho so de SYSTEM e Administradores: a tarefa SYSTEM roda o script daqui, e o MSI,
+# o log e o marcador de fim moram aqui. Na raiz do ProgramData qualquer usuario cria arquivos.
+$WorkDir    = Join-Path $env:ProgramData 'SelfDesk-migrate'
+$WorkScript = Join-Path $WorkDir 'migrate-selfdesk.ps1'
+$LogFile    = Join-Path $WorkDir 'migrate-selfdesk.log'
+$DoneFile   = Join-Path $WorkDir 'migrate-selfdesk.done'
+$MsiLog     = Join-Path $WorkDir 'migrate-selfdesk-msi.log'
 $TaskName   = 'migrate-selfdesk'
 $PsExe      = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $SvcRoaming = Join-Path $env:SystemRoot 'ServiceProfiles\LocalService\AppData\Roaming'
@@ -59,6 +63,35 @@ $RdPattern  = '\\RustDesk\.exe"?\s+--service'
 $SdPattern  = '\\selfdesk\.exe"?\s+--service'
 $PwPattern  = '^password\s*=\s*(''.+''|".+")'
 $script:TmpDir = $null
+# O texto exato que esta rodando (ja lido e analisado): e ele que vai para a pasta protegida, nao o
+# arquivo em disco, que alguem pode ter trocado depois que o PowerShell o leu.
+$ScriptText = & { $a = { }.Ast; while ($a.Parent) { $a = $a.Parent }; $a.Extent.Text }
+
+# Cria (ou confere) a pasta de trabalho: dona Administradores ou SYSTEM, sem heranca, controle total
+# so para os dois. Uma pasta que ja existia com outro dono e recusada: alguem sem admin a criou.
+function Initialize-WorkDir {
+  $admins = New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-544'
+  $system = New-Object Security.Principal.SecurityIdentifier 'S-1-5-18'
+  if (Test-Path -LiteralPath $WorkDir) {
+    $item = Get-Item -LiteralPath $WorkDir -Force
+    if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+      die ('{0} existe e nao e uma pasta comum; apague-o e rode de novo' -f $WorkDir)
+    }
+    $owner = (Get-Acl -LiteralPath $WorkDir).GetOwner([Security.Principal.SecurityIdentifier])
+    if ($owner -ne $admins -and $owner -ne $system) {
+      die ('{0} pertence a {1}, nao a Administradores/SYSTEM; apague a pasta e rode de novo' -f $WorkDir, $owner.Value)
+    }
+  } else {
+    New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
+  }
+  $acl = New-Object Security.AccessControl.DirectorySecurity
+  $acl.SetAccessRuleProtection($true, $false)
+  $inherit = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+  foreach ($sid in $admins, $system) {
+    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', $inherit, 'None', 'Allow')))
+  }
+  Set-Acl -LiteralPath $WorkDir -AclObject $acl
+}
 
 # ------------------------------------------------------------------ log
 
@@ -339,7 +372,8 @@ function Get-MsiErrorHint([int]$rc) {
 
 # Baixa o selfdesk.msi da Release mais recente e confere o sha256 com o SHA256SUMS dela.
 function Get-VerifiedMsi {
-  $script:TmpDir = Join-Path ([IO.Path]::GetTempPath()) ('migrate-selfdesk-' + [guid]::NewGuid().ToString('N'))
+  Initialize-WorkDir
+  $script:TmpDir = Join-Path $WorkDir ('msi-' + [guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $script:TmpDir -Force | Out-Null
   $msi = Join-Path $script:TmpDir 'selfdesk.msi'
   $sums = Join-Path $script:TmpDir 'SHA256SUMS'
@@ -385,10 +419,13 @@ function Invoke-Detached {
   if ($old -and $old.State -eq 'Running') {
     die ('ja ha uma execucao rodando (tarefa {0}); acompanhe {1}' -f $TaskName, $LogFile)
   }
+  Initialize-WorkDir
   Remove-Item -LiteralPath $DoneFile -Force -ErrorAction SilentlyContinue
   [IO.File]::WriteAllText($LogFile, '')
+  # A tarefa SYSTEM roda a copia na pasta protegida, nunca o arquivo baixado pelo usuario.
+  [IO.File]::WriteAllText($WorkScript, $ScriptText, (New-Object Text.UTF8Encoding $false))
 
-  $argLine = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Detached' -f $PSCommandPath
+  $argLine = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Detached' -f $WorkScript
   if ($Update) { $argLine += ' -Update' }
   $action = New-ScheduledTaskAction -Execute $PsExe -Argument $argLine
   $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
@@ -651,11 +688,10 @@ function Invoke-Migrate {
 
     log 'copiando a identidade do RustDesk com o SelfDesk parado'
     Stop-AppService $sd
+    # So a config do servico: no Windows o --server roda como SYSTEM com ela, e a interface de cada
+    # usuario recebe a config do servico. Copiar como SYSTEM para dentro dos perfis seguiria links
+    # que o proprio usuario pode criar (escrita em qualquer pasta, ou a chave do servico exposta).
     Copy-Toml $RdToml (Get-AppToml $SvcRoaming $sd.App)
-    foreach ($r in @(Get-UserRoamings)) {
-      $src = Join-Path $r 'RustDesk\config\RustDesk.toml'
-      if (Test-Path -LiteralPath $src) { Copy-Toml $src (Get-AppToml $r $sd.App) }
-    }
 
     # O -Rollback deixa o SelfDesk Disabled, e o MSI em manutencao nao muda isso.
     Set-Service -Name $sd.Service -StartupType Automatic

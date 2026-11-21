@@ -17,8 +17,10 @@ mudanças no empacotamento entre duas versões do RustDesk ficam em `[Unreleased
   máquina poder baixá-lo pelo `raw.githubusercontent.com` num só comando. Sem `--server` rodando,
   o usuário da sessão passa a ser o de UID 1000.
   No Windows, o [`client/migrate-selfdesk.ps1`](./client/migrate-selfdesk.ps1) faz o mesmo (migrar,
-  `-Update`, `-Check`, `-Rollback`, `-Finalize`) pelo MSI, numa tarefa agendada como SYSTEM; ainda não
-  testado num Windows, só a sintaxe.
+  `-Update`, `-Check`, `-Rollback`, `-Finalize`) pelo MSI, numa tarefa agendada como SYSTEM que roda uma cópia do script numa pasta só de SYSTEM e
+  Administradores (`C:\ProgramData\SelfDesk-migrate`), e copia só a config do serviço, nunca para dentro
+  dos perfis de usuário (um link criado pelo usuário desviaria a escrita do SYSTEM). Ainda não testado
+  num Windows, só a sintaxe.
 
 ### 🔧 Changed
 
