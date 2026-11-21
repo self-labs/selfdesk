@@ -58,6 +58,61 @@ selfdesk --get-id
 systemctl status selfdesk
 ```
 
+## Migrar e atualizar clientes
+
+Os scripts de [`client/`](./client/) trocam um RustDesk instalado pelo SelfDesk **mantendo o ID e a
+senha permanente**, e depois atualizam o SelfDesk para a Release mais recente. Cada um baixa o pacote,
+confere o sha256 com o `SHA256SUMS`, compara o ID antes e depois e desfaz a troca se ele mudar. Rodam
+desacoplados do terminal, então a conexão remota pode cair no meio que o script termina sozinho.
+
+### Debian/Ubuntu
+
+Um comando baixa (ou atualiza) o script em `/usr/local/sbin/migrate-selfdesk` e roda. No lugar de
+`--update`, use a opção que precisar:
+
+```bash
+sudo curl -fsSLo /usr/local/sbin/migrate-selfdesk https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.sh && sudo bash /usr/local/sbin/migrate-selfdesk --update
+```
+
+| Opção          | O que faz                                                                    |
+| :------------- | :--------------------------------------------------------------------------- |
+| (nenhuma)      | migra do RustDesk; seguro rodar de novo                                      |
+| `--update`     | reinstala o `.deb` da Release mais recente por cima, mesmo ID                |
+| `--check`      | só mostra o estado                                                           |
+| `--rollback`   | volta para o RustDesk (enquanto ele estiver instalado)                       |
+| `--finalize`   | remove o RustDesk, depois de conferir os reboots                             |
+
+Vários clientes de uma vez, a partir de uma máquina com acesso SSH a eles (um `sudo` por cliente):
+
+```bash
+U=https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.sh
+for h in cliente1 cliente2 cliente3; do
+  echo "== $h"
+  ssh -t "$h" "sudo curl -fsSLo /usr/local/sbin/migrate-selfdesk $U && sudo bash /usr/local/sbin/migrate-selfdesk --update"
+done
+```
+
+> [!NOTE]
+> Não funciona como `curl ... | sudo bash`: o script se relança pelo próprio arquivo para sobreviver à
+> queda do SSH. Por isso ele é salvo antes de rodar.
+
+### Windows
+
+> [!WARNING]
+> **Ainda não testado num Windows** (20/11/2026): só a sintaxe foi conferida. Teste primeiro com `-Check`
+> numa máquina de teste.
+
+Num PowerShell como Administrador (pelo SSH ou dentro da própria sessão remota: a troca roda numa tarefa
+agendada como SYSTEM, então a queda da sessão não a interrompe). No lugar de `-Update`, use `-Check`,
+`-Rollback`, `-Finalize` ou nada (migrar):
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:ProgramData\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:ProgramData\migrate-selfdesk.ps1 -Update
+```
+
+Log em `C:\ProgramData\migrate-selfdesk.log`. O serviço do RustDesk é achado pelo caminho do executável,
+então um `hbbs`/`hbbr` instalado pelo NSSM na mesma máquina nunca é tocado.
+
 ## O que já vem configurado
 
 Há três níveis: o que é **travado** (vai no `override-settings`, vale até numa máquina que já tinha outra

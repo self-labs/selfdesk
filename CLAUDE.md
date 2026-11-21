@@ -26,6 +26,8 @@ Portuguese with full accentuation. Commit messages are in English (Conventional 
 selfdesk.json              rdgen config (Load/Save Configuration in the rdgen UI); ~700 KB because
                            it embeds the brand images as base64. Do not read it whole.
 brand/                     icon.png, logo.png, privacy.png and build-brand.py that generates them
+client/migrate-selfdesk.ps1 Windows twin (MSI, scheduled task as SYSTEM; untested on Windows as of 2026-11-20)
+client/migrate-selfdesk.sh migrate a Debian/Ubuntu client from RustDesk keeping the ID, --update (public, no client names)
 scripts/repack-deb.sh      lowercase binary, /usr/bin/selfdesk and the alias in the rdgen .deb (see below)
 scripts/repack-arch.sh     rewrites the rdgen .pkg.tar.zst into the selfdesk package (see below)
 .github/workflows/build.yml  daily check, build (windows then linux), release

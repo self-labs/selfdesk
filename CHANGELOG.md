@@ -8,6 +8,18 @@ mudanças no empacotamento entre duas versões do RustDesk ficam em `[Unreleased
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **Migrar e atualizar clientes com um comando** ([`client/`](./client/), README, seção "Migrar e
+  atualizar clientes"): o `migrate-selfdesk.sh` troca o RustDesk pelo SelfDesk num Debian/Ubuntu
+  mantendo o ID e a senha permanente, e com `--update` reinstala o `.deb` da Release mais recente
+  por cima. Ele veio do repositório privado dos servidores para cá, sem nomes de clientes, para cada
+  máquina poder baixá-lo pelo `raw.githubusercontent.com` num só comando. Sem `--server` rodando,
+  o usuário da sessão passa a ser o de UID 1000.
+  No Windows, o [`client/migrate-selfdesk.ps1`](./client/migrate-selfdesk.ps1) faz o mesmo (migrar,
+  `-Update`, `-Check`, `-Rollback`, `-Finalize`) pelo MSI, numa tarefa agendada como SYSTEM; ainda não
+  testado num Windows, só a sintaxe.
+
 ### 🔧 Changed
 
 - **Pacote do Arch no padrão do `.deb`**: o `.pkg.tar.zst` do rdgen saía como pacote `rustdesk`,
