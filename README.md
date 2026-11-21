@@ -83,6 +83,10 @@ sudo curl -fsSLo /usr/local/sbin/migrate-selfdesk https://raw.githubusercontent.
 | `--rollback`   | volta para o RustDesk (enquanto ele estiver instalado)                       |
 | `--finalize`   | remove o RustDesk, depois de conferir os reboots                             |
 
+Para migrar uma máquina: `--check` (precisa mostrar o ID do RustDesk), sem opção (migra), conexão pelo
+SelfDesk no mesmo ID e senha, três reboots com o SelfDesk na tela `:0`, e só então `--finalize`. Se algo
+falhar antes disso, `--rollback`.
+
 Vários clientes de uma vez, a partir de uma máquina com acesso SSH a eles (um `sudo` por cliente):
 
 ```bash
@@ -100,20 +104,82 @@ done
 ### Windows
 
 > [!WARNING]
-> **Ainda não testado num Windows** (20/11/2026): só a sintaxe foi conferida. Teste primeiro com `-Check`
+> **Testado só no Windows Server 2025** (21/11/2026, migração). Num Windows novo, rode antes o `-Check`
 > numa máquina de teste.
 
 Num PowerShell como Administrador (pelo SSH ou dentro da própria sessão remota: a troca roda numa tarefa
-agendada como SYSTEM, então a queda da sessão não a interrompe). No lugar de `-Update`, use `-Check`,
-`-Rollback`, `-Finalize` ou nada (migrar):
+agendada como SYSTEM, então a queda da sessão não a interrompe). No lugar de `-Update`, use a opção que
+precisar:
 
 ```powershell
 [Net.ServicePointManager]::SecurityProtocol='Tls12'; iwr -useb https://raw.githubusercontent.com/self-labs/selfdesk/master/client/migrate-selfdesk.ps1 -OutFile $env:TEMP\migrate-selfdesk.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:TEMP\migrate-selfdesk.ps1 -Update
 ```
 
+| Opção        | O que faz                                                                        |
+| :----------- | :------------------------------------------------------------------------------- |
+| (nenhuma)    | migra do RustDesk; o RustDesk fica parado e desabilitado, ainda instalado        |
+| `-Update`    | reinstala o `.msi` da Release mais recente por cima, mesmo ID                    |
+| `-Check`     | só mostra o estado                                                               |
+| `-Rollback`  | volta para o RustDesk (enquanto ele estiver instalado)                           |
+| `-Finalize`  | desinstala o RustDesk, depois de conferir a conexão pelo SelfDesk                |
+
+Para migrar uma máquina, nesta ordem:
+
+1. `-Check`: precisa mostrar o ID do RustDesk e a senha permanente como `sim`. Sem senha permanente, o
+   script recusa a migração, porque o SelfDesk não aceita a senha temporária.
+2. Sem opção: migra (uns 40 segundos).
+3. Conecte pelo SelfDesk no mesmo ID, com a mesma senha permanente.
+4. `-Finalize` se conectou, `-Rollback` se não.
+
 Log em `C:\ProgramData\SelfDesk-migrate\migrate-selfdesk.log`, numa pasta que só SYSTEM e
 Administradores acessam: a tarefa SYSTEM roda uma cópia do script guardada nela, nunca o arquivo baixado. O serviço do RustDesk é achado pelo caminho do executável,
 então um `hbbs`/`hbbr` instalado pelo NSSM na mesma máquina nunca é tocado.
+
+### Arch Linux (Omarchy)
+
+Sem script: o pacote conflita com o `rustdesk`, então os dois não convivem como no Debian, e a troca é feita
+à mão, pelo SSH ou pelo VNC, nunca de dentro de uma sessão do RustDesk (ela cai no meio). Antes de começar,
+confira que o pacote do RustDesk está no cache (`ls /var/cache/pacman/pkg/rustdesk-*`): é ele que permite
+voltar.
+
+Atualizar, com o mesmo ID (a identidade fica no `SelfDesk.toml`, que o pacote não toca):
+
+```bash
+sudo pacman -U https://github.com/self-labs/selfdesk/releases/latest/download/selfdesk-x86_64.pkg.tar.zst
+```
+
+Migrar do RustDesk, como usuário da sessão gráfica:
+
+```bash
+# 1. Anota o ID e tira o RustDesk (a pasta /root/.config/rustdesk fica)
+rustdesk --get-id
+sudo systemctl disable --now rustdesk
+sudo pacman -R rustdesk
+
+# 2. Instala o SelfDesk (sobe com um ID novo, trocado logo abaixo)
+sudo pacman -U https://github.com/self-labs/selfdesk/releases/latest/download/selfdesk-x86_64.pkg.tar.zst
+
+# 3. Traz a identidade, com o SelfDesk parado. Do usuário vai tudo menos o RustDesk2.toml (opções)
+sudo systemctl stop SelfDesk
+sudo install -d -m 700 /root/.config/selfdesk
+sudo cp -p /root/.config/rustdesk/RustDesk.toml /root/.config/selfdesk/SelfDesk.toml
+install -d -m 700 ~/.config/selfdesk
+for f in ~/.config/rustdesk/*; do
+  b="$(basename "$f")"; [[ "$b" == RustDesk2.toml ]] && continue
+  cp -a -T "$f" ~/.config/selfdesk/"${b/#RustDesk/SelfDesk}"
+done
+
+# 4. Um drop-in do rustdesk.service (Wayland, D-Bus) passa para o SelfDesk.service
+[[ -d /etc/systemd/system/rustdesk.service.d ]] && sudo mv /etc/systemd/system/rustdesk.service.d /etc/systemd/system/SelfDesk.service.d
+sudo systemctl daemon-reload && sudo systemctl start SelfDesk
+
+# 5. Confere: tem de ser o ID do passo 1
+sleep 8; selfdesk --get-id
+```
+
+Se o ID não bater, volte: `sudo systemctl disable --now SelfDesk && sudo pacman -R selfdesk`, reinstale o
+RustDesk do cache (`sudo pacman -U /var/cache/pacman/pkg/rustdesk-<versão>-x86_64.pkg.tar.zst`), devolva o
+drop-in para `rustdesk.service.d` e `sudo systemctl enable --now rustdesk`.
 
 ## O que já vem configurado
 

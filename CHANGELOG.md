@@ -20,11 +20,16 @@ mudanças no empacotamento entre duas versões do RustDesk ficam em `[Unreleased
   `-Update`, `-Check`, `-Rollback`, `-Finalize`) pelo MSI, numa tarefa agendada como SYSTEM que roda uma cópia do script numa pasta só de SYSTEM e
   Administradores (`C:\ProgramData\SelfDesk-migrate`, que já nasce com essa ACL e é recusada se tiver
   item de outro dono ou link), e copia só a config do serviço, nunca para dentro
-  dos perfis de usuário (um link criado pelo usuário desviaria a escrita do SYSTEM). Ainda não testado
-  num Windows, só a sintaxe.
+  dos perfis de usuário (um link criado pelo usuário desviaria a escrita do SYSTEM). Migração testada no
+  jordao (Windows Server 2025, RustDesk 1.4.9) em 2026-11-21: mesmo ID, NSSM intacto.
 
 ### 🔧 Changed
 
+- **README com o passo a passo de cada sistema** (seção "Migrar e atualizar clientes"): a ordem da
+  migração no Debian/Ubuntu e no Windows (`--check`/`-Check`, migrar, testar a conexão, `--finalize`/
+  `-Finalize`, e `--rollback`/`-Rollback` para voltar), a tabela de opções do script do Windows, e uma
+  seção do Arch (Omarchy) com o `pacman -U` da atualização e a migração feita à mão, porque o pacote
+  conflita com o `rustdesk`.
 - **Pacote do Arch no padrão do `.deb`**: o `.pkg.tar.zst` do rdgen saía como pacote `rustdesk`,
   então o `rustdesk` do repositório da distro (o do Omarchy, por exemplo) passaria por cima dele no
   próximo `pacman -Syu`. Agora ele é o pacote `selfdesk` (conflita com `rustdesk`), com a unit
@@ -36,6 +41,11 @@ mudanças no empacotamento entre duas versões do RustDesk ficam em `[Unreleased
 
 ### 🐛 Fixed
 
+- **O console do Windows dava a migração por encerrada no meio do `msiexec`** ([`client/migrate-selfdesk.ps1`](./client/migrate-selfdesk.ps1)):
+  no jordao (2026-11-21) o `Get-ScheduledTask` respondeu "não está rodando" com a tarefa ainda no meio
+  (resultado 267009, `SCHED_S_TASK_RUNNING`). A migração terminou certa, mas o console saiu antes com
+  "terminou sem o marcador de fim". Agora o fim só conta quando o resultado também não é "rodando", por
+  5 consultas seguidas.
 - **O `--update` deixava o SelfDesk na tela do Chrome Remote Desktop** ([`client/migrate-selfdesk.sh`](./client/migrate-selfdesk.sh)):
   reiniciado com o Google no ar, o `--server` via também o `:20` dele e ficava com essa tela (três
   clientes em 2026-11-20). O `--update` e a opção nova `--restart` param o Chrome Remote Desktop,
