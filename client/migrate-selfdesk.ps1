@@ -68,10 +68,31 @@ $script:TmpDir = $null
 $ScriptText = & { $a = { }.Ast; while ($a.Parent) { $a = $a.Parent }; $a.Extent.Text }
 
 # Cria (ou confere) a pasta de trabalho: dona Administradores ou SYSTEM, sem heranca, controle total
-# so para os dois. Uma pasta que ja existia com outro dono e recusada: alguem sem admin a criou.
+# so para os dois. A pasta nova ja nasce com essa ACL (CreateDirectory com a ACL, sem janela em que
+# a heranca do ProgramData deixe um usuario criar arquivos nela). Uma pasta que ja existia com outro
+# dono, ou com qualquer item dentro que nao seja de Administradores/SYSTEM ou que seja link, e
+# recusada: alguem sem admin mexeu nela.
+function New-WorkDirAcl {
+  $acl = New-Object Security.AccessControl.DirectorySecurity
+  $acl.SetAccessRuleProtection($true, $false)
+  $acl.SetOwner($script:AdminsSid)
+  $inherit = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+  foreach ($sid in $script:AdminsSid, $script:SystemSid) {
+    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', $inherit, 'None', 'Allow')))
+  }
+  return $acl
+}
+
+function Test-TrustedOwner([string]$path) {
+  $owner = (Get-Acl -LiteralPath $path).GetOwner([Security.Principal.SecurityIdentifier])
+  return ($owner -eq $script:AdminsSid -or $owner -eq $script:SystemSid)
+}
+
 function Initialize-WorkDir {
-  $admins = New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-544'
-  $system = New-Object Security.Principal.SecurityIdentifier 'S-1-5-18'
+  $script:AdminsSid = New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-544'
+  $script:SystemSid = New-Object Security.Principal.SecurityIdentifier 'S-1-5-18'
+  $admins = $script:AdminsSid
+  $system = $script:SystemSid
   if (Test-Path -LiteralPath $WorkDir) {
     $item = Get-Item -LiteralPath $WorkDir -Force
     if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
@@ -81,16 +102,27 @@ function Initialize-WorkDir {
     if ($owner -ne $admins -and $owner -ne $system) {
       die ('{0} pertence a {1}, nao a Administradores/SYSTEM; apague a pasta e rode de novo' -f $WorkDir, $owner.Value)
     }
+    Set-Acl -LiteralPath $WorkDir -AclObject (New-WorkDirAcl)
+    foreach ($c in @(Get-ChildItem -LiteralPath $WorkDir -Force -Recurse -ErrorAction Stop)) {
+      if (($c.Attributes -band [IO.FileAttributes]::ReparsePoint) -or -not (Test-TrustedOwner $c.FullName)) {
+        die ('{0} tem um item que nao e de Administradores/SYSTEM ou e link ({1}); apague a pasta e rode de novo' -f $WorkDir, $c.FullName)
+      }
+    }
   } else {
-    New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
+    [void][IO.Directory]::CreateDirectory($WorkDir, (New-WorkDirAcl))
   }
-  $acl = New-Object Security.AccessControl.DirectorySecurity
-  $acl.SetAccessRuleProtection($true, $false)
-  $inherit = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
-  foreach ($sid in $admins, $system) {
-    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', $inherit, 'None', 'Allow')))
-  }
-  Set-Acl -LiteralPath $WorkDir -AclObject $acl
+}
+
+# Grava um arquivo novo na pasta de trabalho: apaga o anterior e cria com CreateNew, que falha se
+# algo reaparecer no caminho entre um passo e outro.
+function Write-WorkFile([string]$path, [string]$text) {
+  Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+  $fs = New-Object IO.FileStream($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+  try {
+    $bytes = (New-Object Text.UTF8Encoding $false).GetBytes($text)
+    $fs.Write($bytes, 0, $bytes.Length)
+  } finally { $fs.Dispose() }
+  if (-not (Test-TrustedOwner $path)) { die ('{0} nao ficou com dono Administradores/SYSTEM' -f $path) }
 }
 
 # ------------------------------------------------------------------ log
@@ -421,9 +453,9 @@ function Invoke-Detached {
   }
   Initialize-WorkDir
   Remove-Item -LiteralPath $DoneFile -Force -ErrorAction SilentlyContinue
-  [IO.File]::WriteAllText($LogFile, '')
+  Write-WorkFile $LogFile ''
   # A tarefa SYSTEM roda a copia na pasta protegida, nunca o arquivo baixado pelo usuario.
-  [IO.File]::WriteAllText($WorkScript, $ScriptText, (New-Object Text.UTF8Encoding $false))
+  Write-WorkFile $WorkScript $ScriptText
 
   $argLine = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Detached' -f $WorkScript
   if ($Update) { $argLine += ' -Update' }
