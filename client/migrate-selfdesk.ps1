@@ -172,16 +172,29 @@ function Get-ExeFromPathName([string]$pathName) {
   return $null
 }
 
-function Get-ClientService([string]$pattern) {
-  $found = @(Get-CimInstance -ClassName Win32_Service | Where-Object {
+function Get-ClientServices([string]$pattern) {
+  return @(Get-CimInstance -ClassName Win32_Service | Where-Object {
       $_.PathName -and $_.PathName -match $pattern -and
       $_.PathName -notmatch 'nssm' -and $_.PathName -notmatch 'RustDeskServer'
     })
-  if ($found.Count -gt 1) {
-    warn ('mais de um servico com {0}: {1}; usando o primeiro' -f $pattern, (($found | ForEach-Object { $_.Name }) -join ', '))
+}
+
+# Com mais de um servico (camilla, 21/11/2026: 'RustDesk' e 'RustDeskSvc'), prefere o que tem o
+# nome da pasta do exe, que e o que o instalador cria. Os outros sao parados junto na migracao.
+$script:WarnedMulti = @{}
+function Get-ClientService([string]$pattern) {
+  $found = @(Get-ClientServices $pattern)
+  if ($found.Count -eq 0) { return $null }
+  $pick = $found[0]
+  foreach ($s in $found) {
+    $exe = Get-ExeFromPathName $s.PathName
+    if ($exe -and $s.Name -eq (Split-Path -Leaf (Split-Path -Parent $exe))) { $pick = $s; break }
   }
-  if ($found.Count -ge 1) { return $found[0] }
-  return $null
+  if ($found.Count -gt 1 -and -not $script:WarnedMulti.ContainsKey($pattern)) {
+    $script:WarnedMulti[$pattern] = $true
+    warn ('mais de um servico com {0}: {1}; o principal e o {2}' -f $pattern, (($found | ForEach-Object { $_.Name }) -join ', '), $pick.Name)
+  }
+  return $pick
 }
 
 # Exe, pasta e nome do app a partir do servico. O RustDesk da ao servico o nome do app, que
@@ -239,6 +252,20 @@ function Stop-AppService($info) {
     try { $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(10)) } catch { }
     $svc.Refresh()
     if ($svc.Status -ne 'Stopped') { throw ('o servico {0} nao parou (estado {1})' -f $info.Service, $svc.Status) }
+  }
+}
+
+# Para e desabilita todo servico com o exe do RustDesk, menos o $except. Habilitado, um servico
+# extra subiria o RustDesk no boot com a mesma identidade do SelfDesk, e os dois disputariam o ID.
+function Disable-RustDeskServices([string]$except) {
+  foreach ($s in @(Get-ClientServices $RdPattern)) {
+    if ($s.Name -eq $except) { continue }
+    $info = Get-AppInfo $s
+    if (-not $info) { continue }
+    if ($s.State -eq 'Stopped' -and $s.StartMode -eq 'Disabled') { continue }
+    log ('parando e desabilitando o servico {0} ({1}/{2})' -f $s.Name, $s.State, $s.StartMode)
+    Set-Service -Name $s.Name -StartupType Disabled
+    Stop-AppService $info
   }
 }
 
@@ -527,6 +554,15 @@ function Show-State {
   $rd = Get-RustDeskInfo
   $sd = Get-SelfDeskInfo
   Show-App 'RustDesk' $rd
+  foreach ($s in @(Get-ClientServices $RdPattern)) {
+    if ($rd -and $s.Name -eq $rd.Service) { continue }
+    log ('outro servico do RustDesk: ''{0}'' {1}/{2}, {3}' -f $s.Name, $s.State, $s.StartMode, (Get-ExeFromPathName $s.PathName))
+  }
+  foreach ($e in @(Get-RustDeskUninstallEntries)) {
+    $kind = 'pelo .exe'
+    if ($e.PSChildName -match '^\{[0-9A-Fa-f-]{36}\}$') { $kind = 'MSI' }
+    log ('desinstalacao do RustDesk: {0} ({1}, versao {2})' -f $e.PSChildName, $kind, $e.DisplayVersion)
+  }
   Show-App 'SelfDesk' $sd
   $app = $DefaultApp
   if ($sd) { $app = $sd.App }
@@ -545,7 +581,8 @@ function Show-State {
     log ('senha permanente no RustDesk.toml do servico: {0}' -f $pw)
   }
   foreach ($s in @(Get-NssmServices)) { log ('servico NSSM (nunca tocado): {0} {1}' -f $s.Name, $s.State) }
-  if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+  # Dentro da tarefa a tarefa existe, claro: o aviso so vale fora dela.
+  if (-not $Detached -and (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
     warn ('a tarefa agendada {0} ficou registrada (execucao interrompida?); log em {1}' -f $TaskName, $LogFile)
   }
 }
@@ -628,18 +665,55 @@ function Invoke-Update {
 
 # ------------------------------------------------------------------ finalize
 
+# RustDesk instalado pelo .exe: a entrada 'RustDesk' traz UninstallString "<exe>" --uninstall, e o
+# proprio exe para o servico, apaga a pasta e a entrada (num .bat em segundo plano). So roda se o
+# exe for o de um servico do RustDesk: nunca um comando qualquer lido do registro.
+function Invoke-ExeUninstall($entry, [string[]]$rdExes) {
+  # O MSI do RustDesk tambem grava a entrada 'RustDesk' (jordao): o msiexec /x ja a levou.
+  if (-not (Test-Path -LiteralPath $entry.PSPath)) { return }
+  $u = [string]$entry.UninstallString
+  $exe = Get-ExeFromPathName $u
+  if (-not $exe -or $u -notmatch '\s--uninstall\s*$' -or -not ($rdExes -contains $exe)) {
+    die ('entrada de desinstalacao ''{0}'' inesperada ({1}); remova pelo Painel de Controle' -f $entry.PSChildName, $u)
+  }
+  if (-not (Test-Path -LiteralPath $exe)) { warn ('{0} ja nao existe; sobra so a entrada {1}' -f $exe, $entry.PSChildName); return }
+  log ('removendo o RustDesk pelo desinstalador dele: {0} --uninstall' -f $exe)
+  $p = Start-Process -FilePath $exe -ArgumentList '--uninstall' -PassThru
+  if (-not $p.WaitForExit(120000)) { warn 'o desinstalador do RustDesk nao terminou em 2 minutos' }
+  for ($i = 0; $i -lt 30 -and (Test-Path -LiteralPath $entry.PSPath); $i++) { Start-Sleep -Seconds 2 }
+  if (Test-Path -LiteralPath $entry.PSPath) { warn ('a entrada {0} continua no registro depois de 60 s' -f $entry.PSChildName) }
+}
+
+# Servico do RustDesk que ficou para tras sem exe (um extra, como o 'RustDeskSvc' da camilla, que
+# o desinstalador nao conhece). Com o exe ainda no disco, so avisa.
+function Remove-LeftoverRustDeskServices {
+  foreach ($s in @(Get-ClientServices $RdPattern)) {
+    $exe = Get-ExeFromPathName $s.PathName
+    if ($s.State -ne 'Stopped' -or ($exe -and (Test-Path -LiteralPath $exe))) {
+      warn ('o servico {0} continua ({1}, {2}); confira' -f $s.Name, $s.State, $exe)
+      continue
+    }
+    log ('apagando o servico {0}, cujo exe ja nao existe' -f $s.Name)
+    & sc.exe delete $s.Name | Out-Null
+    if ($LASTEXITCODE -ne 0) { warn ('sc.exe delete {0} terminou com codigo {1}' -f $s.Name, $LASTEXITCODE) }
+  }
+}
+
 function Invoke-Finalize {
   $sd = Get-SelfDeskInfo
   if (-not $sd -or $sd.State -ne 'Running') { die 'o SelfDesk nao esta rodando; nao removo o RustDesk' }
+  $rdSvcs = @(Get-ClientServices $RdPattern)
+  foreach ($s in $rdSvcs) {
+    if ($s.State -ne 'Stopped') { die ('o servico {0} do RustDesk esta {1} (rollback?): rode sem opcao para migrar de novo' -f $s.Name, $s.State) }
+  }
+  Disable-RustDeskServices ''
+  $rdExes = @($rdSvcs | ForEach-Object { Get-ExeFromPathName $_.PathName } | Where-Object { $_ } | Sort-Object -Unique)
   $entries = @(Get-RustDeskUninstallEntries)
   $codes = @(Get-RustDeskProductCodes)
-  if ($entries.Count -eq 0) {
-    if (Get-RustDeskInfo) { die 'o servico do RustDesk existe mas nao ha entrada de desinstalacao ''RustDesk''; remova pelo Painel de Controle' }
+  $exeEntries = @($entries | Where-Object { $_.PSChildName -notmatch '^\{[0-9A-Fa-f-]{36}\}$' })
+  if ($entries.Count -eq 0 -and $rdSvcs.Count -eq 0) {
     log 'RustDesk ja removido'
     return
-  }
-  if ($codes.Count -eq 0) {
-    die 'o RustDesk desta maquina nao foi instalado por MSI (sem ProductCode); remova pelo Painel de Controle'
   }
   $before = @{}
   foreach ($s in @(Get-NssmServices)) { $before[$s.Name] = $s.State }
@@ -649,6 +723,8 @@ function Invoke-Finalize {
     if ($rc -eq 1605) { log ('{0} ja nao estava instalado' -f $c); continue }
     if (-not (Test-MsiOk $rc)) { die ('msiexec /x terminou com codigo {0}: {1} (log: {2})' -f $rc, (Get-MsiErrorHint $rc), $MsiLog) }
   }
+  foreach ($e in $exeEntries) { Invoke-ExeUninstall $e $rdExes }
+  Remove-LeftoverRustDeskServices
   foreach ($s in @(Get-NssmServices)) {
     if ($before.ContainsKey($s.Name) -and $before[$s.Name] -ne $s.State) {
       warn ('o servico NSSM {0} mudou de {1} para {2} durante a remocao: confira' -f $s.Name, $before[$s.Name], $s.State)
@@ -657,7 +733,7 @@ function Invoke-Finalize {
   foreach ($n in $before.Keys) {
     if (-not (Get-Service -Name $n -ErrorAction SilentlyContinue)) { warn ('o servico NSSM {0} sumiu durante a remocao: confira' -f $n) }
   }
-  if (Get-RustDeskInfo) { warn 'o servico do RustDesk ainda existe depois do msiexec /x' }
+  if (@(Get-ClientServices $RdPattern).Count -gt 0) { warn 'ainda ha servico do RustDesk depois da remocao' }
   else { log 'RustDesk removido' }
   Show-State
 }
@@ -713,6 +789,7 @@ function Invoke-Migrate {
     log 'parando e desabilitando o RustDesk (continua instalado)'
     Set-Service -Name $rd.Service -StartupType Disabled
     Stop-AppService $rd
+    Disable-RustDeskServices $rd.Service
 
     log 'instalando o SelfDesk'
     # Depois de um -Rollback o SelfDesk ja esta instalado: mesmo ProductCode vai por REINSTALL.

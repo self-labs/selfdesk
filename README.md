@@ -104,7 +104,8 @@ done
 ### Windows
 
 > [!WARNING]
-> **Testado só no Windows Server 2025** (21/11/2026, migração). Num Windows novo, rode antes o `-Check`
+> **Migração testada em dois Windows** (21/11/2026): um Windows Server 2025 com o RustDesk do MSI e um
+> notebook com o do `.exe`. O `-Update`, o `-Rollback` e o `-Finalize` ainda não. Num Windows novo, rode antes o `-Check`
 > numa máquina de teste.
 
 Num PowerShell como Administrador (pelo SSH ou dentro da própria sessão remota: a troca roda numa tarefa

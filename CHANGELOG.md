@@ -21,7 +21,8 @@ mudanças no empacotamento entre duas versões do RustDesk ficam em `[Unreleased
   Administradores (`C:\ProgramData\SelfDesk-migrate`, que já nasce com essa ACL e é recusada se tiver
   item de outro dono ou link), e copia só a config do serviço, nunca para dentro
   dos perfis de usuário (um link criado pelo usuário desviaria a escrita do SYSTEM). Migração testada no
-  jordao (Windows Server 2025, RustDesk 1.4.9) em 2026-11-21: mesmo ID, NSSM intacto.
+  jordao (Windows Server 2025, RustDesk 1.4.9, MSI) e na camilla (notebook, RustDesk 1.5.3 pelo `.exe`)
+  em 2026-11-21: mesmo ID, NSSM intacto.
 
 ### 🔧 Changed
 
@@ -41,6 +42,16 @@ mudanças no empacotamento entre duas versões do RustDesk ficam em `[Unreleased
 
 ### 🐛 Fixed
 
+- **Windows com dois serviços do RustDesk** ([`client/migrate-selfdesk.ps1`](./client/migrate-selfdesk.ps1)):
+  na camilla (2026-11-21) havia `RustDesk` e `RustDeskSvc` com o mesmo exe, e a migração só parava o
+  primeiro. Habilitado, o outro subiria o RustDesk no boot com a identidade do SelfDesk. Agora a migração
+  e o `-Finalize` param e desabilitam todos, o principal é o que tem o nome da pasta do exe, e o `-Check`
+  lista os extras e as entradas de desinstalação.
+- **`-Finalize` recusava o RustDesk instalado pelo `.exe`** ("sem ProductCode"): agora roda o
+  `RustDesk.exe --uninstall` da entrada `RustDesk`, só quando o exe é o de um serviço do RustDesk, e
+  apaga com `sc.exe delete` o serviço extra que ficar sem exe.
+- **Aviso falso "a tarefa agendada ficou registrada"** no fim de toda migração: o resumo roda dentro da
+  própria tarefa. O aviso agora só aparece fora dela.
 - **O console do Windows dava a migração por encerrada no meio do `msiexec`** ([`client/migrate-selfdesk.ps1`](./client/migrate-selfdesk.ps1)):
   no jordao (2026-11-21) o `Get-ScheduledTask` respondeu "não está rodando" com a tarefa ainda no meio
   (resultado 267009, `SCHED_S_TASK_RUNNING`). A migração terminou certa, mas o console saiu antes com
