@@ -105,8 +105,13 @@ done
 
 > [!WARNING]
 > **Migração testada em dois Windows** (21/11/2026): um Windows Server 2025 com o RustDesk do MSI e um
-> notebook com o do `.exe`. O `-Update`, o `-Rollback` e o `-Finalize` ainda não. Num Windows novo, rode antes o `-Check`
-> numa máquina de teste.
+> notebook com o do `.exe`, este também com o `-Finalize` e o `-Update`. O `-Rollback` ainda não. Num
+> Windows novo, rode antes o `-Check` numa máquina de teste. Para atualizar, use sempre o comando acima, que
+> baixa o script do dia: a cópia em `C:\ProgramData\SelfDesk-migrate` é a da última execução desacoplada.
+
+> [!NOTE]
+> O `raw.githubusercontent.com` guarda cache por até 5 minutos: logo depois de um push, o comando pode baixar
+> a versão anterior. Para pegar uma versão exata, troque `master` na URL pelo hash do commit.
 
 Num PowerShell como Administrador (pelo SSH ou dentro da própria sessão remota: a troca roda numa tarefa
 agendada como SYSTEM, então a queda da sessão não a interrompe). No lugar de `-Update`, use a opção que

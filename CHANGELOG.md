@@ -22,7 +22,9 @@ mudanças no empacotamento entre duas versões do RustDesk ficam em `[Unreleased
   item de outro dono ou link), e copia só a config do serviço, nunca para dentro
   dos perfis de usuário (um link criado pelo usuário desviaria a escrita do SYSTEM). Migração testada no
   jordao (Windows Server 2025, RustDesk 1.4.9, MSI) e na camilla (notebook, RustDesk 1.5.3 pelo `.exe`)
-  em 2026-11-21: mesmo ID, NSSM intacto.
+  em 2026-11-21: mesmo ID, NSSM intacto. O `-Finalize` da camilla removeu o RustDesk do `.exe` e o
+  serviço extra `RustDeskSvc`, com o SelfDesk no mesmo ID, e o `-Update` reinstalou o MSI por cima
+  (`REINSTALL=ALL`) mantendo o ID.
 
 ### 🔧 Changed
 
